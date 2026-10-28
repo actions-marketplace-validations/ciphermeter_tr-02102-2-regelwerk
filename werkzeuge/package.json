@@ -1,0 +1,9 @@
+{
+  "name": "tr-02102-2-regelwerk-werkzeuge",
+  "private": true,
+  "description": "Textextraktion und Zweitprüfung für das Regelwerk TR-02102-2 (2026-01)",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "pdfjs-dist": "^6.4.299"
+  }
+}
