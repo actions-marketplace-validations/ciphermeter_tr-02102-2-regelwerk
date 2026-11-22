@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+name: 'TLS-Prüfung gegen BSI TR-02102-2'
+description: 'Prüft die TLS-Konfiguration eines eigenen Hosts gegen BSI TR-02102-2 (Fassung 2026-01), nur mit normalen TLS-Handshakes.'
+branding:
+  icon: 'lock'
+  color: 'blue'
+inputs:
+  host:
+    description: 'Hostname des zu prüfenden Servers (z. B. www.example.org). Nur eigene oder verantwortete Hosts prüfen.'
+    required: true
+  port:
+    description: 'TCP-Port'
+    required: false
+    default: '443'
+  fail-on:
+    description: 'none = nie fehlschlagen · warn = zusätzlich bei Zertifikatsbefunden ohne TR-Vorgabe, Fristen im laufenden Jahr oder eingeschränkter Messung · fail = nur bei Abweichungen von der TR oder wenn keine Messung möglich ist'
+    required: false
+    default: 'fail'
+  sni:
+    description: 'Abweichender SNI-Name (optional, Standard: host)'
+    required: false
+    default: ''
+outputs:
+  result:
+    description: 'pass, warn oder fail'
+    value: ${{ steps.pruefung.outputs.result }}
+  findings:
+    description: 'Anzahl Befunde (Abweichungen von der TR + Zertifikatsbefunde ohne TR-Vorgabe + Fristen im laufenden Jahr)'
+    value: ${{ steps.pruefung.outputs.findings }}
+runs:
+  using: composite
+  steps:
+    - id: pruefung
+      shell: bash
+      env:
+        TR_HOST: ${{ inputs.host }}
+        TR_PORT: ${{ inputs.port }}
+        TR_FAIL_ON: ${{ inputs.fail-on }}
+        TR_SNI: ${{ inputs.sni }}
+        TR_REGELWERK: ${{ github.action_path }}/tr-02102-2-2026-01.json
+      run: node "${{ github.action_path }}/action/run.js"

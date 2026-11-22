@@ -20,6 +20,7 @@ affiliated with or endorsed by the BSI.*
 | [`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) | das Regelwerk |
 | [`PRUEFPROTOKOLL.md`](PRUEFPROTOKOLL.md) | wie die Werte übertragen und gegengeprüft wurden, offene und auffällige Stellen |
 | [`werkzeuge/`](werkzeuge/) | Textextraktion aus dem PDF und unabhängige Zweitprüfung (Node.js, pdfjs-dist) |
+| [`action.yml`](action.yml), [`action/`](action/) | GitHub Action: TLS-Prüfung eines eigenen Hosts gegen dieses Regelwerk (siehe unten) |
 
 ## Felder
 
@@ -92,6 +93,88 @@ node werkzeuge/build-regelwerk.mjs neu.json && cmp neu.json tr-02102-2-2026-01.j
 Geprüft gegen das PDF mit 19 Seiten, SHA-256 `eed80d1a38ec0d7d8908765c3a09ea6f17a7ca729bef95b0d358d5d129af3f1f`,
 abgerufen am 26.10.2026.
 
+## GitHub Action: TLS-Prüfung gegen TR-02102-2
+
+Die Action in diesem Repository prüft die TLS-Konfiguration eines Servers gegen das Regelwerk
+[`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) (BSI TR-02102-2, Version 2026-01) und schreibt das Ergebnis als
+Zusammenfassung in den Workflow-Lauf. Sie braucht keine npm-Pakete; sie nutzt Node.js und `openssl` des Runners.
+
+### Was geprüft wird
+
+- Protokollversionen (SSL/TLS 1.0 bis 1.3)
+- Cipher-Suiten für TLS 1.2 und TLS 1.3
+- Gruppen für TLS 1.2 und TLS 1.3, einschließlich der hybriden Gruppen mit ML-KEM
+- Signaturverfahren für TLS 1.3
+- TLS-1.2-Erweiterungen: Extended Master Secret, sichere Renegotiation, Kompression, Encrypt-then-MAC bei CBC-Suiten
+- Zertifikat: Signaturverfahren, Schlüssellänge, Gültigkeit, Namenspassung, Vertrauenskette aus Sicht des Runners
+
+Je Merkmal ein eigener Handshake mit genau einem angebotenen Wert. Jedes Merkmal ist danach *angeboten*, *abgelehnt*
+oder *nicht prüfbar* (mit Grund). Ein fehlender Messwert gilt nie als „nicht angeboten“.
+
+### Ergebnis
+
+| `result` | Bedeutung |
+|---|---|
+| `fail` | mindestens eine Abweichung von der TR (mit Fundstelle in der TR), oder kein Handshake gelungen |
+| `warn` | keine Abweichung von der TR, aber ein Zertifikatsbefund ohne Vorgabe der TR (Name passt nicht, abgelaufen oder bald ablaufend, Kette nicht vertrauenswürdig), eine Frist der TR endet im laufenden Jahr, oder die Messung ist eingeschränkt |
+| `pass` | nichts davon |
+
+`findings` zählt Abweichungen von der TR, Zertifikatsbefunde ohne TR-Vorgabe und Fristen im laufenden Jahr. Mit `fail-on` steuern Sie, wann der Schritt fehlschlägt:
+`fail` (Standard) nur bei `fail`, `warn` bei `warn` und `fail`, `none` nie.
+
+Hinweise wie „in der TR nicht aufgeführt“ (z. B. X25519 allein, ChaCha20-Poly1305) erscheinen in der Zusammenfassung,
+sind aber keine Abweichung: Nicht aufgeführte Verfahren gelten laut TR nicht automatisch als unsicher.
+
+### Verwendung
+
+```yaml
+name: TLS-Prüfung
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  tls:
+    runs-on: ubuntu-26.04
+    steps:
+      - id: tls
+        uses: ciphermeter/tr-02102-2-regelwerk@v1
+        with:
+          host: www.example.org
+          port: 443
+          fail-on: fail
+      - run: echo "Ergebnis ${{ steps.tls.outputs.result }}, Befunde ${{ steps.tls.outputs.findings }}"
+```
+
+Eingaben: `host` (Pflicht), `port` (Standard 443), `fail-on` (`none`, `warn`, `fail`; Standard `fail`), `sni`
+(optional, abweichender Servername).
+
+Lokal ohne GitHub: `node action/run.js www.example.org 443 --fail-on warn` (Ausgabe als Markdown auf stdout).
+
+### Hybride Gruppen mit ML-KEM
+
+Ob X25519MLKEM768, SecP256r1MLKEM768 und SecP384r1MLKEM1024 messbar sind, hängt von der OpenSSL-Version der
+Node.js-Laufzeit ab (`node -p process.versions.openssl`), nicht vom `openssl`-Programm des Systems.
+Bei OpenSSL vor 3.5 erscheinen diese Gruppen als „nicht messbar (OpenSSL < 3.5; runs-on: ubuntu-26.04 verwenden)“ und die Messung gilt
+als eingeschränkt – nie als „nicht angeboten“. Die Zusammenfassung nennt die verwendeten Versionen.
+
+### Grenzen
+
+- Die Action baut nur normale TLS-Verbindungen zu dem Host und Port auf, die Sie angeben (höchstens 4 je Sekunde,
+  6 Sekunden Zeitlimit je Versuch). Sie führt keine Schwachstellen- oder Angriffstests durch.
+- Prüfen Sie nur eigene Hosts oder Hosts, für die Sie verantwortlich sind.
+- Gemessen wird eine einzige Adresse des Hosts; Lastverteiler mit unterschiedlich eingerichteten Servern sind nicht
+  vollständig erfasst.
+- Nicht messbar: PSK- und SRP-Suiten (ohne Zugangsdaten), statische (EC)DH-Suiten. Bei TLS 1.2 mit ECDSA-Zertifikat
+  bleiben manche Gruppen unbestimmt, wenn der Server die Zertifikatskurve bevorzugt.
+- Das Vertrauen in die Zertifikatskette wird aus Sicht des Runners bewertet (dessen Vertrauensspeicher). Interne
+  Zertifizierungsstellen erscheinen deshalb als Zertifikatsbefund (`warn`).
+- Maßgeblich ist allein die TR des BSI. Die Action ist kein Dokument des BSI und wird vom BSI weder geprüft noch
+  anerkannt.
+
+Bezahlte Erweiterung: ein PDF-Bericht mit Maßnahmen je Befund, bestellbar unter https://ciphermeter.com/bestellen.html.
+
 ## Fehler und neue Fassungen
 
 Fehler bitte als [Issue](https://github.com/ciphermeter/tr-02102-2-regelwerk/issues) melden, mit Tabelle und Seite.
@@ -105,5 +188,5 @@ liefert einen Bericht je Hostname.
 
 ## Lizenz
 
-[Apache License 2.0](LICENSE) für JSON, Prüfprotokoll und Werkzeuge. Die Technische Richtlinie selbst gehört dem BSI und
+[Apache License 2.0](LICENSE) für JSON, Prüfprotokoll, Werkzeuge und die GitHub Action. Die Technische Richtlinie selbst gehört dem BSI und
 ist hier nicht enthalten.
