@@ -6,7 +6,8 @@ Empfehlungen und Schlüssellängen, Teil 2 – Verwendung von Transport Layer Se
 Mindestschlüssellängen – jeweils mit IANA-Nummer, RFC, Frist („empfohlen bis“) und Fundstelle (Abschnitt, Tabelle, Seite).
 
 *English summary: Machine-readable JSON of all tables in the German BSI technical guideline TR-02102-2 (TLS), version
-2026-01, with IANA code points, RFC, recommended-until year and the exact source location of every entry. Not
+2026-01, with IANA code points, RFC, recommended-until year and the exact source location of every entry. Includes a
+GitHub Action that checks your own host against it (see [below](#github-action-tls-check-against-bsi-tr-02102-2)). Not
 affiliated with or endorsed by the BSI.*
 
 > **Kein Dokument des BSI.** Diese Datei wurde vom BSI weder erstellt noch geprüft oder anerkannt. Sie enthält nur
@@ -20,7 +21,7 @@ affiliated with or endorsed by the BSI.*
 | [`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) | das Regelwerk |
 | [`PRUEFPROTOKOLL.md`](PRUEFPROTOKOLL.md) | wie die Werte übertragen und gegengeprüft wurden, offene und auffällige Stellen |
 | [`werkzeuge/`](werkzeuge/) | Textextraktion aus dem PDF und unabhängige Zweitprüfung (Node.js, pdfjs-dist) |
-| [`action.yml`](action.yml), [`action/`](action/) | GitHub Action: TLS-Prüfung eines eigenen Hosts gegen dieses Regelwerk (siehe unten) |
+| [`action.yml`](action.yml), [`action/`](action/) | GitHub Action: TLS-Prüfung eines eigenen Hosts gegen dieses Regelwerk (siehe unten) · *GitHub Action: TLS check of your own host against this rule set (see below)* |
 
 ## Felder
 
@@ -93,13 +94,97 @@ node werkzeuge/build-regelwerk.mjs neu.json && cmp neu.json tr-02102-2-2026-01.j
 Geprüft gegen das PDF mit 19 Seiten, SHA-256 `eed80d1a38ec0d7d8908765c3a09ea6f17a7ca729bef95b0d358d5d129af3f1f`,
 abgerufen am 26.10.2026.
 
-## GitHub Action: TLS-Prüfung gegen TR-02102-2
+## GitHub Action: TLS check against BSI TR-02102-2
+
+The action in this repository checks the TLS configuration of a server against the rule set
+[`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) (BSI TR-02102-2, version 2026-01) and writes the result as a
+job summary of the workflow run. It needs no npm packages; it uses Node.js and `openssl` of the runner.
+The job summary is in German (the guideline is German); inputs, outputs and result values are the same in every language.
+
+### What is checked
+
+- Protocol versions (SSL/TLS 1.0 to 1.3)
+- Cipher suites for TLS 1.2 and TLS 1.3
+- Groups for TLS 1.2 and TLS 1.3, including the hybrid ML-KEM groups
+- Signature schemes for TLS 1.3
+- TLS 1.2 extensions: Extended Master Secret, secure renegotiation, compression, Encrypt-then-MAC for CBC suites
+- Certificate: signature algorithm, key length, validity, name match, trust chain as seen by the runner
+
+One handshake per feature, offering exactly one value. Each feature is then *offered*, *rejected* or *not testable*
+(with a reason). A missing measurement never counts as "not offered".
+
+### Result
+
+| `result` | Meaning |
+|---|---|
+| `fail` | at least one deviation from the TR (with its location in the TR), or no handshake succeeded |
+| `warn` | no deviation from the TR, but a certificate finding without a TR requirement (name mismatch, expired or expiring soon, untrusted chain), a TR deadline ending this year, or a limited measurement |
+| `pass` | none of the above |
+
+`findings` counts deviations from the TR, certificate findings without a TR requirement and TR deadlines ending this year.
+`fail-on` controls when the step fails: `fail` (default) only on `fail`, `warn` on `warn` and `fail`, `none` never.
+
+Notes such as "not listed in the TR" (e.g. X25519 alone, ChaCha20-Poly1305) appear in the summary but are not a
+deviation: according to the TR, unlisted algorithms are not automatically insecure.
+
+### Usage
+
+```yaml
+name: TLS check
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  tls:
+    runs-on: ubuntu-26.04
+    steps:
+      - id: tls
+        uses: ciphermeter/tr-02102-2-regelwerk@v1
+        with:
+          host: www.example.org
+          port: 443
+          fail-on: fail
+      - run: echo "Result ${{ steps.tls.outputs.result }}, findings ${{ steps.tls.outputs.findings }}"
+```
+
+Inputs: `host` (required), `port` (default 443), `fail-on` (`none`, `warn`, `fail`; default `fail`), `sni`
+(optional, different server name).
+
+Locally without GitHub: `node action/run.js www.example.org 443 --fail-on warn` (Markdown output on stdout).
+
+### Hybrid ML-KEM groups
+
+Whether X25519MLKEM768, SecP256r1MLKEM768 and SecP384r1MLKEM1024 can be measured depends on the OpenSSL version of the
+Node.js runtime (`node -p process.versions.openssl`), not on the system's `openssl` binary. With OpenSSL before 3.5
+these groups are reported as not measurable (use `runs-on: ubuntu-26.04`) and the measurement counts as limited –
+never as "not offered". The summary names the versions used.
+
+### Limits
+
+- The action only opens normal TLS connections to the host and port you specify (at most 4 per second, 6 seconds
+  timeout per attempt). It runs no vulnerability or attack tests.
+- Only check hosts you own or are responsible for.
+- A single address of the host is measured; load balancers with differently configured servers are not fully covered.
+- Not measurable: PSK and SRP suites (no credentials), static (EC)DH suites. With TLS 1.2 and an ECDSA certificate,
+  some groups stay undetermined if the server prefers the certificate curve.
+- Trust in the certificate chain is assessed from the runner's point of view (its trust store). Internal certificate
+  authorities therefore show up as a certificate finding (`warn`).
+- Only the BSI guideline itself is authoritative. The action is not a BSI document and is neither reviewed nor
+  endorsed by the BSI.
+
+Paid extension: a PDF report (German) with remediation steps per finding, orderable at https://ciphermeter.com/bestellen.html.
+
+<details>
+<summary>Deutsch: GitHub Action – TLS-Prüfung gegen TR-02102-2</summary>
+
 
 Die Action in diesem Repository prüft die TLS-Konfiguration eines Servers gegen das Regelwerk
 [`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) (BSI TR-02102-2, Version 2026-01) und schreibt das Ergebnis als
 Zusammenfassung in den Workflow-Lauf. Sie braucht keine npm-Pakete; sie nutzt Node.js und `openssl` des Runners.
 
-### Was geprüft wird
+#### Was geprüft wird
 
 - Protokollversionen (SSL/TLS 1.0 bis 1.3)
 - Cipher-Suiten für TLS 1.2 und TLS 1.3
@@ -111,7 +196,7 @@ Zusammenfassung in den Workflow-Lauf. Sie braucht keine npm-Pakete; sie nutzt No
 Je Merkmal ein eigener Handshake mit genau einem angebotenen Wert. Jedes Merkmal ist danach *angeboten*, *abgelehnt*
 oder *nicht prüfbar* (mit Grund). Ein fehlender Messwert gilt nie als „nicht angeboten“.
 
-### Ergebnis
+#### Ergebnis
 
 | `result` | Bedeutung |
 |---|---|
@@ -125,7 +210,7 @@ oder *nicht prüfbar* (mit Grund). Ein fehlender Messwert gilt nie als „nicht 
 Hinweise wie „in der TR nicht aufgeführt“ (z. B. X25519 allein, ChaCha20-Poly1305) erscheinen in der Zusammenfassung,
 sind aber keine Abweichung: Nicht aufgeführte Verfahren gelten laut TR nicht automatisch als unsicher.
 
-### Verwendung
+#### Verwendung
 
 ```yaml
 name: TLS-Prüfung
@@ -152,14 +237,14 @@ Eingaben: `host` (Pflicht), `port` (Standard 443), `fail-on` (`none`, `warn`, `f
 
 Lokal ohne GitHub: `node action/run.js www.example.org 443 --fail-on warn` (Ausgabe als Markdown auf stdout).
 
-### Hybride Gruppen mit ML-KEM
+#### Hybride Gruppen mit ML-KEM
 
 Ob X25519MLKEM768, SecP256r1MLKEM768 und SecP384r1MLKEM1024 messbar sind, hängt von der OpenSSL-Version der
 Node.js-Laufzeit ab (`node -p process.versions.openssl`), nicht vom `openssl`-Programm des Systems.
 Bei OpenSSL vor 3.5 erscheinen diese Gruppen als „nicht messbar (OpenSSL < 3.5; runs-on: ubuntu-26.04 verwenden)“ und die Messung gilt
 als eingeschränkt – nie als „nicht angeboten“. Die Zusammenfassung nennt die verwendeten Versionen.
 
-### Grenzen
+#### Grenzen
 
 - Die Action baut nur normale TLS-Verbindungen zu dem Host und Port auf, die Sie angeben (höchstens 4 je Sekunde,
   6 Sekunden Zeitlimit je Versuch). Sie führt keine Schwachstellen- oder Angriffstests durch.
@@ -174,6 +259,8 @@ als eingeschränkt – nie als „nicht angeboten“. Die Zusammenfassung nennt 
   anerkannt.
 
 Bezahlte Erweiterung: ein PDF-Bericht mit Maßnahmen je Befund, bestellbar unter https://ciphermeter.com/bestellen.html.
+
+</details>
 
 ## Fehler und neue Fassungen
 
