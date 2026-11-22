@@ -100,6 +100,8 @@ The action in this repository checks the TLS configuration of a server against t
 [`tr-02102-2-2026-01.json`](tr-02102-2-2026-01.json) (BSI TR-02102-2, version 2026-01) and writes the result as a
 job summary of the workflow run. It needs no npm packages; it uses Node.js and `openssl` of the runner.
 The job summary is in German (the guideline is German); inputs, outputs and result values are the same in every language.
+Listed in the GitHub Marketplace:
+[TLS check against BSI TR-02102-2](https://github.com/marketplace/actions/tls-check-against-bsi-tr-02102-2).
 
 ### What is checked
 
