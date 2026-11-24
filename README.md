@@ -175,6 +175,10 @@ never as "not offered". The summary names the versions used.
   authorities therefore show up as a certificate finding (`warn`).
 - Only the BSI guideline itself is authoritative. The action is not a BSI document and is neither reviewed nor
   endorsed by the BSI.
+- Our own site ciphermeter.com runs on shared hosting. In TLS 1.3 its server also accepts the group `ffdhe2048`,
+  which is below the 3000-bit minimum of the guideline. The hoster sets the groups server-wide and cannot change them
+  for a single customer (support reply of 2026-11-24). Checking ciphermeter.com with this action therefore shows this
+  finding; it is a deviation of our host, not an error of the action.
 
 Paid extension: a PDF report (German) with remediation steps per finding, orderable at https://ciphermeter.com/bestellen.html.
 
@@ -259,6 +263,10 @@ als eingeschränkt – nie als „nicht angeboten“. Die Zusammenfassung nennt 
   Zertifizierungsstellen erscheinen deshalb als Zertifikatsbefund (`warn`).
 - Maßgeblich ist allein die TR des BSI. Die Action ist kein Dokument des BSI und wird vom BSI weder geprüft noch
   anerkannt.
+- Unsere eigene Website ciphermeter.com liegt auf Shared-Hosting. Ihr Server nimmt in TLS 1.3 auch die Gruppe
+  `ffdhe2048` an, die unter der Mindestlänge von 3000 Bit liegt. Der Hoster stellt die Gruppen serverweit ein und kann
+  sie für einzelne Kunden nicht ändern (Antwort des Supports vom 24.11.2026). Wer ciphermeter.com mit dieser Action
+  prüft, sieht deshalb diesen Befund; es ist eine Abweichung unseres Hosts, kein Fehler der Action.
 
 Bezahlte Erweiterung: ein PDF-Bericht mit Maßnahmen je Befund, bestellbar unter https://ciphermeter.com/bestellen.html.
 
